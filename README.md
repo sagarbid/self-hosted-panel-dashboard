@@ -96,7 +96,93 @@ YAML
 
 Then point your panel's kiosk app at `http://<host-ip>:8081`.
 
-## ⚠️ Read this before you start — the five traps
+## 📺 Streaming on a panel with no Google Play Services
+
+Most cheap panels ship **without GMS** — which kills the Netflix/Spotify/YouTube apps
+outright, and Widevine is **L3 at best** on uncertified SoCs like the RK3326. So
+**Netflix / Disney+ / Prime Video are simply not possible** on this hardware. Don't waste
+time on them.
+
+What *does* work, verified on-device:
+
+| Service | Route | Status |
+|---|---|---|
+| **YouTube** | SmartTube (ad-free, big-screen) | ✅ works, no GMS |
+| **YouTube** | NewPipe | ✅ works, no GMS |
+| **PeerTube / SoundCloud** | NewPipe | ✅ |
+| **Twitch / YouTube web** | WebView browser | ✅ |
+| **Your own media** | local file server + WebView `<video>` | ✅ hardware-decoded |
+| **Local files** | RockVideoPlayer (re-enable it — vendors ship it) | ✅ HW-accelerated |
+| Jellyfin server | needs Docker (no native mac build) | ⚠️ optional |
+| Netflix / Disney+ / Prime | needs Widevine **L1** + certification | ❌ impossible |
+
+### Why the device audit decides everything
+
+Before promising any streaming, check:
+
+```bash
+# 1. DRM — is there a Widevine engine at all?
+adb shell getprop | grep -i widevine
+adb shell ls /vendor/lib/libwvdrmengine.so
+
+# 2. GMS present? (if absent, only GMS-free clients will install)
+adb shell pm list packages | grep -iE 'gms|vending|com.google.android.gms'
+
+# 3. Hardware codecs — what can the VPU actually decode?
+adb shell cat /vendor/etc/media_codecs.xml | grep -oE 'name="OMX[^"]*"'
+
+# 4. ABI — pick APKs that match, or they'll install then refuse to run
+adb shell getprop ro.product.cpu.abilist
+```
+
+Both NewPipe and SmartTube publish **`armeabi-v7a`** builds — always match the ABI. F-Droid
+serves **x86_64** for VLC, so its main-repo APK will install and then fail.
+
+### Launching apps from the dashboard
+
+An Android WebView honours the `intent://` scheme, so a bookmark can launch a native app:
+
+```yaml
+- type: bookmarks
+  groups:
+    - name: Streaming Apps
+      links:
+        - title: SmartTube
+          url: intent://browse#Intent;package=org.smarttube.stable;end
+```
+
+### ⚠️ The return problem (and its fix)
+
+Once an external app covers the screen, a kiosk panel with **no physical Home button** is
+stuck. Verified fix — the HOME keyevent returns to the kiosk:
+
+```bash
+adb shell input keyevent 3     # HOME -> kiosk resumes
+```
+
+Confirm the device maps HOME/BACK/MENU at all:
+```bash
+adb shell cat /system/usr/keylayout/*.kl | grep -E 'HOME|BACK|MENU'
+```
+For a hands-free panel, add a floating overlay button to the kiosk app, or keep playback
+*inside* the WebView so no app switch ever happens.
+
+### Playing local media with no server at all
+
+You don't need Jellyfin. Serve files over HTTP with **Range support** and let the WebView's
+`<video>` tag handle it — the panel's VPU does the decoding:
+
+```
+GET /stream?f=<relpath>   -> 206 Partial Content, Content-Range
+```
+
+Range support is what makes **seeking** work; without it the scrubber is dead. Match the
+container to the VPU: **H.264/AAC in `.mp4` is guaranteed**; `.mkv`/`HEVC` depend on
+`OMX.rk.video_decoder.*` entries in `/vendor/etc/media_codecs.xml`.
+
+---
+
+## ⚠️ Read this before you start — the traps
 
 Full detail in [`SKILL.md`](SKILL.md). The short version:
 
@@ -106,12 +192,20 @@ Full detail in [`SKILL.md`](SKILL.md). The short version:
 2. **`launchd` cannot exec from `/Volumes`** — agents exit `78: EX_CONFIG` with *empty logs*.
    And **TCC blocks launchd-spawned processes from reading external volumes**
    (`PermissionError: [Errno 1]`). **Every service binary, script and data dir must live on
-   the internal disk.**
+   the internal disk.** (This is why local media must sit on the internal disk, not a big
+   external drive — unless you grant Full Disk Access.)
 3. **`-port` is not a CLI flag** — the port goes in `server.port` in the YAML.
 4. **`upper` is not a Glance template function** — use CSS `text-transform`.
 5. **Glance hydrates client-side** — the served HTML is a ~9 KB shell with no widget data.
    Grepping it looks like a failure and isn't. Verify with
    `/api/pages/<slug>/content/` instead.
+6. **Widget type is `docker-containers`, not `docker`** — the docs' heading text isn't the
+   type string. The error is `unknown widget type: docker`.
+7. **Theme and bookmark colours are `H S L`, not RGB** — `color: 203 166 247` fails with
+   *"HSL saturation must be between 0 and 100"*.
+8. **`iframe` height must be an integer** — `height: 1400`, never `height: 1400px`.
+9. **`launchctl list` showing `exit -15` does NOT mean the service is down** — that's the
+   stale code from your own `kickstart -k`. Confirm with an HTTP request, not the exit code.
 
 ## Verifying it actually works
 

@@ -7,14 +7,10 @@ server:
 
 pages:
   # ============================================================
-  # PAGE 1 — HOME (premium dashboard)
+  # HOME — dashboard
   # ============================================================
   - name: Home
-    slug: home
-    width: wide
-    hide-desktop-navigation: false
     columns:
-      # ---------------- LEFT (300px) ----------------
       - size: small
         widgets:
           - type: clock
@@ -29,44 +25,57 @@ pages:
             location: Melbourne, Australia
             units: metric
             hour-format: 24h
+            hide-location: false
 
           - type: calendar
             first-day-of-week: monday
 
-      # ---------------- RIGHT (full) ----------------
+          - type: server-stats
+            hide-swap: true
+
       - size: full
         widgets:
-          # --- Crypto portfolio (his actual bags) ---
+          # ---- live portfolio (CoinGecko, keyless) ----
           - type: custom-api
             title: Portfolio
             cache: 5m
             url: https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bittensor,venice-token,meteora,moonbeam&price_change_percentage=24h
             template: |
               <ul class="list list-gap-10">
-                {{ range .JSON.Array "" }}
+              {{ range .JSON.Array "" }}
                 <li>
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-8">
-                      <img src="{{ .String "image" }}" alt="" style="width:20px;height:20px;border-radius:50%">
-                      <span class="size-h4 color-highlight" style="text-transform:uppercase">{{ .String "symbol" }}</span>
-                      <span class="size-h6 color-paragraph">{{ .String "name" }}</span>
-                    </div>
-                    <div class="flex items-center gap-12">
-                      <span class="size-h4">{{ .Float "current_price" | printf "$%.4f" }}</span>
-                      {{ $chg := .Float "price_change_percentage_24h" }}
-                      <span class="size-h5 {{ if lt $chg 0.0 }}color-negative{{ else }}color-positive{{ end }}" style="min-width:64px;text-align:right">
-                        {{ printf "%+.2f%%" $chg }}
-                      </span>
-                    </div>
-                  </div>
+                  <a class="flex items-center gap-10" href="https://www.coingecko.com/en/coins/{{ .String "id" }}" target="_blank">
+                    <img src="{{ .String "image" }}" alt="" style="width:22px;height:22px;border-radius:50%">
+                    <span class="color-highlight size-h4" style="text-transform:uppercase;min-width:64px">{{ .String "symbol" }}</span>
+                    <span class="grow color-base" style="font-size:0.85em">{{ .String "name" }}</span>
+                    <span style="min-width:92px;text-align:right">{{ .Float "current_price" | printf "$%.4f" }}</span>
+                    {{ if lt (.Float "price_change_percentage_24h") 0.0 }}
+                    <span class="color-negative" style="min-width:70px;text-align:right">{{ .Float "price_change_percentage_24h" | printf "%.2f" }}%</span>
+                    {{ else }}
+                    <span class="color-positive" style="min-width:70px;text-align:right">+{{ .Float "price_change_percentage_24h" | printf "%.2f" }}%</span>
+                    {{ end }}
+                  </a>
                 </li>
-                {{ end }}
+              {{ end }}
               </ul>
 
-          # --- Cybersecurity news ---
+          # ---- homelab container status ----
+          - type: docker-containers
+            socket: /var/run/docker.sock
+            hide-by-default: false
+            show-message: false
+            compact: true
+
+          - type: hacker-news
+            limit: 8
+            collapse-after: 4
+            comments-url-template: https://news.ycombinator.com/item?id={{ .ID }}
+
+      - size: small
+        widgets:
           - type: rss
             title: Cyber Security
-            limit: 25
+            limit: 12
             collapse-after: 5
             cache: 30m
             feeds:
@@ -77,10 +86,9 @@ pages:
               - url: https://krebsonsecurity.com/feed/
                 title: Krebs on Security
 
-          # --- AI news ---
           - type: rss
             title: AI & Tech
-            limit: 25
+            limit: 10
             collapse-after: 5
             cache: 30m
             feeds:
@@ -92,13 +100,66 @@ pages:
                 title: MIT Tech Review
 
   # ============================================================
-  # PAGE 2 — KIDS (habit tracker + routine + rewards)
-  # served by the local Family Hub service on :8082
+  # MEDIA — streaming
+  # ============================================================
+  - name: Media
+    width: wide
+    columns:
+      - size: small
+        widgets:
+          - type: bookmarks
+            groups:
+              - name: Streaming Apps
+                color: 267 84 81
+                links:
+                  - title: SmartTube
+                    subtitle: YouTube · ad-free
+                    url: intent://browse#Intent;package=org.smarttube.stable;end
+                  - title: NewPipe
+                    subtitle: YouTube · PeerTube
+                    url: intent://#Intent;package=org.schabi.newpipe;end
+                  - title: Jellyfin
+                    subtitle: media server client
+                    url: intent://#Intent;package=org.jellyfin.mobile;end
+                  - title: RockVideo
+                    subtitle: hw-accelerated player
+                    url: intent://#Intent;package=android.rk.RockVideoPlayer;end
+                  - title: YouTube Web
+                    subtitle: Browser player
+                    url: https://m.youtube.com
+                  - title: Twitch
+                    subtitle: Live streams
+                    url: https://m.twitch.tv
+
+              - name: Return
+                color: 115 54 76
+                links:
+                  - title: Back to Dashboard
+                    subtitle: reloads this page
+                    url: http://192.168.4.53:8081
+
+          - type: custom-api
+            title: "How to exit an app"
+            cache: 24h
+            url: http://127.0.0.1:8082/api/state
+            template: |
+              <p class="color-paragraph" style="font-size:0.85em">
+                Apps open over this dashboard. To come back, press the panel's
+                <strong class="color-highlight">HOME</strong> button — or send:<br>
+                <code>adb shell input keyevent 3</code>
+              </p>
+
+      - size: full
+        widgets:
+          - type: iframe
+            source: http://192.168.4.53:8083/
+            height: 1400
+
+  # ============================================================
+  # KIDS — Ellysse
   # ============================================================
   - name: Kids
-    slug: kids
     width: wide
-    desktop-navigation-width: wide
     columns:
       - size: full
         widgets:
@@ -107,13 +168,11 @@ pages:
             height: 1560
 
   # ============================================================
-  # PAGE 3 — PHOTOS (digital photo frame)
-  # full-bleed slideshow from the Family Hub service
+  # PHOTOS — digital photo frame
   # ============================================================
   - name: Photos
-    slug: photos
     width: wide
-    desktop-navigation-width: wide
+    hide-desktop-navigation: true
     columns:
       - size: full
         widgets:
@@ -121,8 +180,6 @@ pages:
             source: http://192.168.4.53:8082/photos
             height: 760
 
-# ---------------- THEME ----------------
-# Catppuccin Mocha — modern, premium, high contrast for a wall panel
 theme:
   background-color: 240 21 15
   primary-color: 217 92 83

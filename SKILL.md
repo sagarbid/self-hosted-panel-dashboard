@@ -266,12 +266,87 @@ done
 | `docker pull` hangs on macOS/OrbStack | use the standalone Go binary |
 | `-port` flag doesn't exist | set `server.port` in the YAML |
 | `upper` template function undefined | use CSS `text-transform` |
+| `unknown widget type: docker` | the type is `docker-containers` — doc *headings* aren't type strings |
+| `HSL saturation must be between 0 and 100` | theme/bookmark colours are **H S L**, not RGB |
+| `cannot unmarshal !!str '1400px' into int` | `iframe height` must be an integer (`1400`) |
 | Widget grep finds nothing | Glance is client-side; hit `/api/pages/<slug>/content/` |
 | launchd exit 78, empty logs | can't exec from `/Volumes` — move to internal disk |
-| TCC `Errno 1` on external volume | move data to internal disk |
+| TCC `Errno 1` on external volume | move data to internal disk (or grant Full Disk Access) |
 | f-string "expression cannot contain assignment" | double every literal `{}` in embedded CSS/JS |
 | Agent loops on `address already in use` | kill the manual process before loading the agent |
 | Single `lsof` shows no panel connection | poll in a loop; connections idle-close |
+| `launchctl list` shows `exit -15` but the site works | that's the stale code from your own `kickstart -k`; verify by HTTP, not exit code |
+
+## Streaming on a panel with no Google Play Services
+
+**Audit first — it decides everything:**
+
+```bash
+adb shell getprop | grep -i widevine                     # is there a Widevine engine?
+adb shell ls /vendor/lib/libwvdrmengine.so
+adb shell pm list packages | grep -iE 'gms|vending'      # GMS present?
+adb shell cat /vendor/etc/media_codecs.xml | grep -oE 'name="OMX[^"]*"'
+adb shell getprop ro.product.cpu.abilist                 # pick matching APKs
+```
+
+**Expectations on an uncertified SoC (e.g. RK3326):** Widevine is **L3 at best**, so
+**Netflix / Disney+ / Prime Video are impossible** — they need L1 *and* certification. Say
+so plainly instead of burning time.
+
+**What works, all GMS-free:**
+
+| Route | Package | Notes |
+|---|---|---|
+| YouTube (ad-free, big-screen) | SmartTube | ship the `armeabi-v7a` build |
+| YouTube / PeerTube / SoundCloud | NewPipe | universal APK is fine |
+| Jellyfin client | `jellyfin-android-*-libre-release.apk` | the **libre** build has no Google deps |
+| Hardware-accelerated local playback | `android.rk.RockVideoPlayer` | vendors ship it — you probably *disabled* it during debloat. `pm enable` it back |
+| Twitch / YouTube web | the WebView itself | works |
+
+⚠️ **Always match the ABI.** F-Droid serves **x86_64** for VLC — it installs and then fails.
+Check with `aapt2 dump badging <apk> | grep native-code`.
+
+### Launching apps from the dashboard
+
+Android WebView honours the `intent://` scheme, so Glance bookmarks can launch native apps:
+
+```yaml
+- type: bookmarks
+  groups:
+    - name: Streaming Apps
+      links:
+        - title: SmartTube
+          url: intent://browse#Intent;package=org.smarttube.stable;end
+```
+
+### ⚠️ The return problem
+
+An app covers the kiosk, and most panels have **no physical Home button**. Verified fix —
+HOME returns to the kiosk:
+
+```bash
+adb shell input keyevent 3
+adb shell cat /system/usr/keylayout/*.kl | grep -E 'HOME|BACK|MENU'   # confirm mapping
+```
+
+For a hands-free panel: add a floating overlay button to the kiosk app, or keep playback
+*inside* the WebView so no app switch ever happens.
+
+### Playing local media with no server at all
+
+Skip Jellyfin (it has no native macOS build — Docker only, and that pull may hang).
+Serve files over HTTP **with Range support** and let `<video>` play them:
+
+```
+GET /stream?f=<relpath>   ->  206 Partial Content + Content-Range
+```
+
+Range support is what makes **seeking** work — without it the scrubber is dead. Match the
+container to the VPU: **H.264/AAC in `.mp4` is guaranteed**; `.mkv`/HEVC depend on the
+`OMX.rk.video_decoder.*` entries present. See `examples/media_server.py`.
+
+⚠️ Local media therefore has to live on the **internal** disk (TCC blocks external volumes
+for launchd-spawned processes) — unless you grant Full Disk Access.
 
 ## Panel-side prerequisites
 
