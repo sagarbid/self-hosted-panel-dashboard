@@ -1,0 +1,131 @@
+# Glance — Sagar's family panel dashboard
+# 15.6" FotoCube panel: 1280x800 landscape, WebView 106
+# Columns: small = fixed 300px, full = remaining. Max 3 cols, needs 1-2 full.
+
+server:
+  port: 8081
+
+pages:
+  # ============================================================
+  # PAGE 1 — HOME (premium dashboard)
+  # ============================================================
+  - name: Home
+    slug: home
+    width: wide
+    hide-desktop-navigation: false
+    columns:
+      # ---------------- LEFT (300px) ----------------
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: 24h
+            timezones:
+              - timezone: Australia/Melbourne
+                label: Melbourne
+              - timezone: UTC
+                label: UTC
+
+          - type: weather
+            location: Melbourne, Australia
+            units: metric
+            hour-format: 24h
+
+          - type: calendar
+            first-day-of-week: monday
+
+      # ---------------- RIGHT (full) ----------------
+      - size: full
+        widgets:
+          # --- Crypto portfolio (his actual bags) ---
+          - type: custom-api
+            title: Portfolio
+            cache: 5m
+            url: https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bittensor,venice-token,meteora,moonbeam&price_change_percentage=24h
+            template: |
+              <ul class="list list-gap-10">
+                {{ range .JSON.Array "" }}
+                <li>
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-8">
+                      <img src="{{ .String "image" }}" alt="" style="width:20px;height:20px;border-radius:50%">
+                      <span class="size-h4 color-highlight" style="text-transform:uppercase">{{ .String "symbol" }}</span>
+                      <span class="size-h6 color-paragraph">{{ .String "name" }}</span>
+                    </div>
+                    <div class="flex items-center gap-12">
+                      <span class="size-h4">{{ .Float "current_price" | printf "$%.4f" }}</span>
+                      {{ $chg := .Float "price_change_percentage_24h" }}
+                      <span class="size-h5 {{ if lt $chg 0.0 }}color-negative{{ else }}color-positive{{ end }}" style="min-width:64px;text-align:right">
+                        {{ printf "%+.2f%%" $chg }}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+                {{ end }}
+              </ul>
+
+          # --- Cybersecurity news ---
+          - type: rss
+            title: Cyber Security
+            limit: 25
+            collapse-after: 5
+            cache: 30m
+            feeds:
+              - url: https://feeds.feedburner.com/TheHackersNews
+                title: The Hacker News
+              - url: https://www.bleepingcomputer.com/feed/
+                title: BleepingComputer
+              - url: https://krebsonsecurity.com/feed/
+                title: Krebs on Security
+
+          # --- AI news ---
+          - type: rss
+            title: AI & Tech
+            limit: 25
+            collapse-after: 5
+            cache: 30m
+            feeds:
+              - url: https://openai.com/blog/rss.xml
+                title: OpenAI
+              - url: https://blog.google/technology/ai/rss/
+                title: Google AI
+              - url: https://www.technologyreview.com/topic/artificial-intelligence/feed
+                title: MIT Tech Review
+
+  # ============================================================
+  # PAGE 2 — KIDS (habit tracker + routine + rewards)
+  # served by the local Family Hub service on :8082
+  # ============================================================
+  - name: Kids
+    slug: kids
+    width: wide
+    desktop-navigation-width: wide
+    columns:
+      - size: full
+        widgets:
+          - type: iframe
+            source: http://192.168.4.53:8082/kids
+            height: 1560
+
+  # ============================================================
+  # PAGE 3 — PHOTOS (digital photo frame)
+  # full-bleed slideshow from the Family Hub service
+  # ============================================================
+  - name: Photos
+    slug: photos
+    width: wide
+    desktop-navigation-width: wide
+    columns:
+      - size: full
+        widgets:
+          - type: iframe
+            source: http://192.168.4.53:8082/photos
+            height: 760
+
+# ---------------- THEME ----------------
+# Catppuccin Mocha — modern, premium, high contrast for a wall panel
+theme:
+  background-color: 240 21 15
+  primary-color: 217 92 83
+  positive-color: 115 54 76
+  negative-color: 347 70 65
+  contrast-multiplier: 1.2
